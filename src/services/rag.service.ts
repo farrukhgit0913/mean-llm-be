@@ -1,6 +1,6 @@
 import { getDb } from '../db/mongodb.js';
 import { env } from '../config/env.js';
-import { createEmbedding } from './embedding.service.js';
+import { createEmbeddings } from './embedding.service.js';
 
 export interface RetrievedChunk {
   content: string;
@@ -14,7 +14,7 @@ export async function retrieveContext(
 ): Promise<RetrievedChunk[]> {
 
   const queryEmbedding =
-    await createEmbedding(query);
+    await createEmbeddings(query);
 
   const collection =
     getDb().collection('document_chunks');
