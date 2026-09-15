@@ -57,9 +57,15 @@ export async function retrieveContext(
   limit = 5
 ): Promise<RetrievedChunk[]> {
 
-  // 1. Create query embedding using Ollama.
+  console.log('[RAG] 1. Creating query embedding...');
+
   const [queryEmbedding] =
     await createEmbeddings([query]);
+
+  console.log(
+    '[RAG] 2. Query embedding created:',
+    queryEmbedding?.length
+  );
 
   if (!queryEmbedding?.length) {
     throw new Error(
@@ -67,11 +73,18 @@ export async function retrieveContext(
     );
   }
 
-  // 2. Get document chunks from local MongoDB.
+  console.log(
+    '[RAG] 3. Getting MongoDB collection...'
+  );
+
   const collection =
     getDb().collection<DocumentChunk>(
       'document_chunks'
     );
+
+  console.log(
+    '[RAG] 4. Querying MongoDB...'
+  );
 
   const chunks =
     await collection
@@ -88,12 +101,20 @@ export async function retrieveContext(
       })
       .toArray();
 
-  // No documents in knowledge base.
+  console.log(
+    '[RAG] 5. MongoDB query completed:',
+    chunks.length,
+    'chunks'
+  );
+
   if (chunks.length === 0) {
     return [];
   }
 
-  // 3. Calculate cosine similarity locally.
+  console.log(
+    '[RAG] 6. Calculating similarity...'
+  );
+
   const results = chunks
     .map(chunk => ({
       content: chunk.content,
@@ -103,16 +124,31 @@ export async function retrieveContext(
         chunk.embedding
       )
     }))
-    .filter(
-      result =>
-        result.score >=
-        RAG_SCORE_THRESHOLD
-    )
     .sort(
       (a, b) =>
         b.score - a.score
     )
     .slice(0, limit);
 
-  return results;
+  console.log(
+    '[RAG] 7. Similarity results:',
+    results.map(result => ({
+      filename: result.filename,
+      score: result.score
+    }))
+  );
+
+  const filteredResults =
+    results.filter(
+      result =>
+        result.score >=
+        RAG_SCORE_THRESHOLD
+    );
+
+  console.log(
+    '[RAG] 8. Relevant results:',
+    filteredResults.length
+  );
+
+  return filteredResults;
 }

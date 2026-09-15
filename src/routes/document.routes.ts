@@ -12,14 +12,13 @@ import {
 
 const router = Router();
 
-const upload =
-  multer({
-    storage: multer.memoryStorage(),
+const upload = multer({
+  storage: multer.memoryStorage(),
 
-    limits: {
-      fileSize: 10 * 1024 * 1024
-    }
-  });
+  limits: {
+    fileSize: 10 * 1024 * 1024
+  }
+});
 
 router.post(
   '/upload',
@@ -29,9 +28,7 @@ router.post(
     req: Request,
     res: Response
   ) => {
-
     try {
-
       if (!req.file) {
         res.status(400).json({
           message: 'File is required'
@@ -40,8 +37,18 @@ router.post(
         return;
       }
 
+      console.log(
+        '[DOCUMENT] Upload received:',
+        req.file.originalname
+      );
+
       const text =
         req.file.buffer.toString('utf-8');
+
+      console.log(
+        '[DOCUMENT] Text length:',
+        text.length
+      );
 
       const result =
         await ingestDocument(
@@ -49,14 +56,27 @@ router.post(
           text
         );
 
+      console.log(
+        '[DOCUMENT] Ingestion successful:',
+        result
+      );
+
       res.json(result);
 
     } catch (error) {
+      console.error(
+        '[DOCUMENT] Ingestion failed:',
+        error
+      );
 
-      console.error(error);
+      const message =
+        error instanceof Error
+          ? error.message
+          : String(error);
 
       res.status(500).json({
-        message: 'Document ingestion failed'
+        message: 'Document ingestion failed',
+        error: message
       });
     }
   }
