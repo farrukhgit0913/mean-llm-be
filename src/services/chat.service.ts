@@ -1,9 +1,14 @@
 import { retrieveContext } from './rag.service.js';
 
+
 interface RagChunk {
+
   content: string;
+
   filename: string;
+
   score: number;
+
 }
 
 
@@ -26,12 +31,33 @@ function buildContext(
 
 
 export async function buildRagPrompt(
-  question: string
+  question: string,
+  onStatus?: (status: string) => void
 ) {
 
   /*
-   * Search MongoDB for relevant knowledge.
+   * ----------------------------------------
+   * STEP 1
+   * ----------------------------------------
    */
+
+  onStatus?.(
+    'Creating query embedding with nomic-embed-text...'
+  );
+
+
+  /*
+   * ----------------------------------------
+   * STEP 2
+   * Search MongoDB
+   * ----------------------------------------
+   */
+
+  onStatus?.(
+    'Searching knowledge base in MongoDB...'
+  );
+
+
   const chunks =
     await retrieveContext(
       question,
@@ -49,9 +75,12 @@ export async function buildRagPrompt(
 
 
   /*
-   * Only use chunks above the
-   * similarity threshold.
+   * ----------------------------------------
+   * STEP 3
+   * RAG results
+   * ----------------------------------------
    */
+
   const relevantChunks =
     chunks.filter(
       chunk =>
@@ -60,20 +89,24 @@ export async function buildRagPrompt(
     );
 
 
-  /*
-   * ------------------------------------------------
-   * CASE 1:
-   * Relevant information found in MongoDB.
-   * ------------------------------------------------
-   */
   if (
     relevantChunks.length > 0
   ) {
+
+    onStatus?.(
+      `Found ${relevantChunks.length} relevant document(s)`
+    );
+
 
     const context =
       buildContext(
         relevantChunks
       );
+
+
+    onStatus?.(
+      'Relevant context added to LLM prompt'
+    );
 
 
     const prompt = `
@@ -109,22 +142,31 @@ ${question}
 
 
     return {
+
       prompt,
+
       sources: relevantChunks
+
     };
 
   }
 
 
   /*
-   * ------------------------------------------------
-   * CASE 2:
-   * No relevant information found.
-   *
-   * Let the LLM answer using its own
-   * general knowledge.
-   * ------------------------------------------------
+   * ----------------------------------------
+   * NO RAG CONTEXT
+   * ----------------------------------------
    */
+
+  onStatus?.(
+    'No relevant knowledge found'
+  );
+
+
+  onStatus?.(
+    'Using Llama 3.2 general knowledge'
+  );
+
 
   const prompt = `
 You are a helpful AI assistant.
@@ -146,8 +188,11 @@ ${question}
 
 
   return {
+
     prompt,
+
     sources: []
+
   };
 
 }
