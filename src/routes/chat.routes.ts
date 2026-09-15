@@ -6,13 +6,17 @@ import {
 
 import { z } from 'zod';
 
-import { openai } from '../services/openai.service.js';
-import { env } from '../config/env.js';
 import {
   buildRagPrompt
 } from '../services/chat.service.js';
 
 const router = Router();
+
+const OLLAMA_URL =
+  process.env.OLLAMA_URL ?? 'http://localhost:11434';
+
+const OLLAMA_CHAT_MODEL =
+  process.env.OLLAMA_CHAT_MODEL ?? 'llama3.2';
 
 const chatSchema = z.object({
   message: z.string().min(1),
@@ -22,9 +26,7 @@ const chatSchema = z.object({
 router.post(
   '/stream',
   async (req: Request, res: Response) => {
-
     try {
-
       const {
         message
       } = chatSchema.parse(req.body);
@@ -51,30 +53,89 @@ router.post(
 
       res.flushHeaders();
 
-      const stream =
-        await openai.responses.create({
-          model: env.openaiChatModel,
+      const response = await fetch(
+        `${OLLAMA_URL}/api/chat`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: OLLAMA_CHAT_MODEL,
+            messages: [
+              {
+                role: 'user',
+                content: prompt
+              }
+            ],
+            stream: true
+          })
+        }
+      );
 
-          input: prompt,
+      if (!response.ok) {
+        throw new Error(
+          `Ollama chat failed: ${response.status} ${await response.text()}`
+        );
+      }
 
-          stream: true
-        });
+      if (!response.body) {
+        throw new Error(
+          'Ollama did not return a response body'
+        );
+      }
 
-      for await (
-        const event of stream
-      ) {
+      const reader =
+        response.body.getReader();
 
-        if (
-          event.type ===
-          'response.output_text.delta'
-        ) {
+      const decoder =
+        new TextDecoder();
 
-          res.write(
-            `data: ${JSON.stringify({
-              type: 'token',
-              value: event.delta
-            })}\n\n`
-          );
+      let buffer = '';
+
+      while (true) {
+        const {
+          done,
+          value
+        } = await reader.read();
+
+        if (done) break;
+
+        buffer += decoder.decode(
+          value,
+          { stream: true }
+        );
+
+        const lines =
+          buffer.split('\n');
+
+        buffer =
+          lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+
+          try {
+            const data =
+              JSON.parse(line);
+
+            const token =
+              data.message?.content;
+
+            if (token) {
+              res.write(
+                `data: ${JSON.stringify({
+                  type: 'token',
+                  value: token
+                })}\n\n`
+              );
+            }
+          } catch (error) {
+            console.error(
+              'Failed to parse Ollama response:',
+              line
+            );
+          }
         }
       }
 
@@ -94,13 +155,13 @@ router.post(
       res.end();
 
     } catch (error) {
-
       console.error(error);
 
       if (!res.headersSent) {
         res.status(500).json({
           message: 'Chat failed'
         });
+
         return;
       }
 
